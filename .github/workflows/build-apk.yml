@@ -90,7 +90,7 @@ jobs:
 
             # Create a Capacitor Android shell around the built web application.
             bun add @capacitor/core @capacitor/cli @capacitor/android
-            bunx cap init EDVYNTRA com.paoxlyyyy.edvyntra --web-dir "$WEB_DIR" --npm-client bun
+            bunx cap init EDVYNTRA com.paoxlyyyy.edvyntra --web-dir "$WEB_DIR"
             bunx cap add android
             bunx cap sync android
             cd android
