@@ -1,0 +1,97 @@
+name: Build EDVYNTRA APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "edvyntra.zip"
+      - ".github/workflows/build-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Unpack project
+        run: |
+          test -f edvyntra.zip || (echo "No se encontró edvyntra.zip en la raíz del repositorio" && exit 1)
+          mkdir project
+          unzip -q edvyntra.zip -d project
+          echo "Contenido extraído:"
+          find project -maxdepth 3 -type f | head -80
+
+      - name: Prepare web assets
+        run: |
+          set -e
+          mkdir -p android-wrapper/www
+          PKG="$(find project -name package.json -not -path '*/node_modules/*' -print -quit)"
+          if [ -n "$PKG" ]; then
+            APP_DIR="$(dirname "$PKG")"
+            echo "Proyecto Node encontrado en $APP_DIR"
+            cd "$APP_DIR"
+            npm install
+            if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+              npm run build
+            else
+              echo "package.json no define un script build; se intentará empaquetar los archivos web disponibles."
+            fi
+            if [ -d dist ]; then WEB_DIR=dist
+            elif [ -d build ]; then WEB_DIR=build
+            elif [ -d www ]; then WEB_DIR=www
+            elif [ -f index.html ]; then WEB_DIR=.
+            else
+              echo "No se encontró una salida web estándar (dist, build, www o index.html)."
+              exit 1
+            fi
+            cd "$GITHUB_WORKSPACE"
+            cp -R "$APP_DIR/$WEB_DIR/." android-wrapper/www/
+          else
+            HTML="$(find project -name index.html -not -path '*/node_modules/*' -print -quit)"
+            if [ -z "$HTML" ]; then
+              echo "No se encontró package.json ni index.html. No es posible identificar una aplicación web compilable."
+              exit 1
+            fi
+            WEB_DIR="$(dirname "$HTML")"
+            cp -R "$WEB_DIR/." android-wrapper/www/
+          fi
+          test -f android-wrapper/www/index.html || (echo "La salida web no contiene index.html" && exit 1)
+
+      - name: Create Capacitor Android wrapper
+        working-directory: android-wrapper
+        run: |
+          npm init -y
+          npm install @capacitor/core @capacitor/android
+          npm install --save-dev @capacitor/cli
+          npx cap init EDVYNTRA com.edvyntra.app --web-dir www
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android-wrapper/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: EDVYNTRA-debug-APK
+          path: android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
