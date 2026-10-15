@@ -23,10 +23,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Extract project
         run: |
@@ -62,10 +67,14 @@ jobs:
             fi
 
             cd "$ROOT"
-            npm install
+            if [ -f bun.lock ] || [ -f bun.lockb ]; then
+              bun install
+            else
+              npm install --legacy-peer-deps --no-audit --no-fund
+            fi
             # Build web assets when a build script exists.
             if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
-              npm run build
+              bun run build
             fi
 
             # Locate the generated web app (common Vite/React/etc. output directories).
@@ -80,10 +89,10 @@ jobs:
             fi
 
             # Create a Capacitor Android shell around the built web application.
-            npm install @capacitor/core @capacitor/cli @capacitor/android
-            npx cap init EDVYNTRA com.paoxlyyyy.edvyntra --web-dir "$WEB_DIR" --npm-client npm
-            npx cap add android
-            npx cap sync android
+            bun add @capacitor/core @capacitor/cli @capacitor/android
+            bunx cap init EDVYNTRA com.paoxlyyyy.edvyntra --web-dir "$WEB_DIR" --npm-client bun
+            bunx cap add android
+            bunx cap sync android
             cd android
             chmod +x gradlew
             ./gradlew assembleDebug
